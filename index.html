@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>크리스탈 클리커 (Crystal Clicker)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Pretendard', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* 크리스탈 맥박 & 광원 애니메이션 */
+        @keyframes pulse-glow {
+            0%, 100% {
+                filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.6)) drop-shadow(0 0 30px rgba(59, 130, 246, 0.4));
+                transform: scale(1);
+            }
+            50% {
+                filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.9)) drop-shadow(0 0 50px rgba(59, 130, 246, 0.7));
+                transform: scale(1.03);
+            }
+        }
+
+        /* 콤보 버닝 애니메이션 */
+        @keyframes combo-flicker {
+            0%, 100% { filter: drop-shadow(0 0 25px rgba(244, 63, 94, 0.8)); }
+            50% { filter: drop-shadow(0 0 45px rgba(234, 179, 8, 1)); }
+        }
+
+        .crystal-glow {
+            animation: pulse-glow 3s infinite ease-in-out;
+        }
+
+        .combo-active {
+            animation: combo-flicker 0.5s infinite ease-in-out !important;
+        }
+
+        /* 클릭 시 튕기는 효과 클래스 */
+        .crystal-bounce {
+            transform: scale(0.92) !important;
+            transition: transform 0.05s ease-out;
+        }
+
+        /* Floating Score Text 애니메이션 */
+        @keyframes float-up {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-80px) scale(1.3);
+            }
+        }
+
+        .float-text {
+            position: absolute;
+            pointer-events: none;
+            animation: float-up 0.8s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+            font-weight: 800;
+            text-shadow: 0 0 8px rgba(0,0,0,0.8);
+            z-index: 50;
+        }
+
+        /* 파티클 애니메이션 */
+        @keyframes particle-fade {
+            0% {
+                opacity: 1;
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(var(--dx), var(--dy)) scale(0);
+            }
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            animation: particle-fade 0.6s ease-out forwards;
+            z-index: 40;
+        }
+
+        /* 스크롤바 스타일링 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.4);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.7);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between overflow-x-hidden relative selection:bg-purple-500 selection:text-white">
+
+    <!-- 배경 배경 광원 이펙트 -->
+    <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 -right-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-pink-600/20 rounded-full blur-3xl"></div>
+    </div>
+
+    <!-- 네비게이션 / 상단 헤더 -->
+    <header class="relative z-10 w-full px-6 py-4 border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-blue-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                <i class="fa-solid font-bold fa-gem text-white text-lg"></i>
+            </div>
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-300 to-blue-400">
+                크리스탈 클리커
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button id="soundToggleBtn" onclick="toggleSound()" class="p-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 text-slate-300 transition-all" title="사운드 토글">
+                <i id="soundIcon" class="fa-solid fa-volume-high"></i>
+            </button>
+            <button onclick="resetGame()" class="p-2.5 rounded-lg bg-slate-800/80 hover:bg-red-950/40 hover:border-red-500/50 border border-slate-700/50 text-slate-400 hover:text-red-400 transition-all" title="초기화">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 메인 콘텐츠 영역 (모바일 responsive 2컬럼 레이아웃) -->
+    <main class="relative z-10 flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- 왼쪽/중앙 메인 클릭 존 (7열) -->
+        <section class="lg:col-span-7 flex flex-col items-center justify-between min-h-[500px] lg:min-h-[620px] p-6 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl relative overflow-hidden">
+            
+            <!-- 점수 및 통계 패널 -->
+            <div class="w-full text-center space-y-2 mt-2">
+                <div class="text-sm font-semibold tracking-wider text-purple-400 uppercase">보유 에너시 스펙트럼</div>
+                <div class="text-4xl md:text-6xl font-extrabold tracking-tight text-white flex items-center justify-center space-x-2">
+                    <span id="scoreDisplay" class="bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-purple-200">0</span>
+                    <span class="text-purple-400 text-2xl md:text-3xl">⚡</span>
+                </div>
+                <div class="flex items-center justify-center space-x-4 text-xs md:text-sm text-slate-400 font-medium">
+                    <span class="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50">
+                        클릭 파워: <strong id="clickPowerDisplay" class="text-purple-300">1</strong>
+                    </span>
+                    <span class="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50">
+                        초당 생성(CPS): <strong id="cpsDisplay" class="text-blue-300">0</strong>
+                    </span>
+                </div>
+            </div>
+
+            <!-- 메인 크리스탈 상호작용 구역 -->
+            <div id="crystalContainer" class="relative my-auto flex items-center justify-center cursor-pointer select-none">
+                <!-- 콤보 이펙트 링 -->
+                <div id="comboRing" class="absolute w-72 h-72 md:w-80 md:h-80 rounded-full border-2 border-dashed border-amber-400/0 transition-all duration-300 pointer-events-none"></div>
+
+                <!-- 3D 보석 SVG (중앙 클릭 오브젝트) -->
+                <div id="crystalObject" class="crystal-glow transition-transform duration-100 transform active:scale-95">
+                    <svg class="w-56 h-56 md:w-72 md:h-72 drop-shadow-2xl" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="gemGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#c084fc" />
+                                <stop offset="50%" stop-color="#9333ea" />
+                                <stop offset="100%" stop-color="#4c1d95" />
+                            </linearGradient>
+                            <linearGradient id="gemGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#38bdf8" />
+                                <stop offset="100%" stop-color="#1e3a8a" />
+                            </linearGradient>
+                            <linearGradient id="gemGrad3" x1="0%" y1="100%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#f472b6" />
+                                <stop offset="100%" stop-color="#a855f7" />
+                            </linearGradient>
+                            <filter id="innerGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="5" result="blur" />
+                                <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowDiff" />
+                                <feFlood flood-color="white" flood-opacity="0.4" />
+                                <feComposite in2="shadowDiff" operator="in" />
+                                <feComposite in2="SourceGraphic" operator="over" />
+                            </filter>
+                        </defs>
+                        <!-- 크리스탈 면 세그먼트들 (3D 다이아몬드 스타일) -->
+                        <polygon points="100,15 145,50 100,70" fill="url(#gemGrad1)" opacity="0.9" />
+                        <polygon points="100,15 55,50 100,70" fill="url(#gemGrad3)" opacity="0.9" />
+                        <polygon points="55,50 15,100 65,100" fill="url(#gemGrad2)" opacity="0.8" />
+                        <polygon points="145,50 185,100 135,100" fill="url(#gemGrad1)" opacity="0.85" />
+                        <polygon points="55,50 65,100 100,70" fill="#a855f7" opacity="0.95" />
+                        <polygon points="145,50 135,100 100,70" fill="#c084fc" opacity="0.95" />
+                        <polygon points="65,100 100,70 135,100" fill="#e9d5ff" opacity="0.9" />
+                        <!-- 하단 스파이크 (중심 꼭짓점) -->
+                        <polygon points="65,100 100,185 100,70" fill="url(#gemGrad1)" />
+                        <polygon points="135,100 100,185 100,70" fill="url(#gemGrad2)" />
+                        <polygon points="15,100 100,185 65,100" fill="#3b82f6" opacity="0.75" />
+                        <polygon points="185,100 100,185 135,100" fill="#7e22ce" opacity="0.8" />
+                        <!-- 하이라이트/반사면 -->
+                        <polygon points="100,15 120,40 100,55 80,40" fill="#ffffff" opacity="0.4" />
+                    </svg>
+                </div>
+            </div>
+
+            <!-- 하단 콤보 게이지 및 정보 -->
+            <div class="w-full max-w-xs space-y-1.5 mb-2">
+                <div class="flex justify-between text-xs font-semibold">
+                    <span id="comboLabel" class="text-slate-400">연속 클릭 콤보</span>
+                    <span id="comboMultiplier" class="text-amber-400 font-bold">1.0x</span>
+                </div>
+                <div class="w-full bg-slate-800/80 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+                    <div id="comboBar" class="bg-gradient-to-r from-purple-500 via-pink-500 to-amber-400 h-full rounded-full w-0 transition-all duration-100"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 오른쪽 상점 및 업그레이드 존 (5열) -->
+        <section class="lg:col-span-5 flex flex-col space-y-4">
+            
+            <!-- 상점 헤더 & 탭 -->
+            <div class="bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl p-4 rounded-2xl flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-store text-purple-400"></i>
+                    <h2 class="font-bold text-lg text-slate-100">연구소 & 상점</h2>
+                </div>
+                <span class="text-xs text-slate-400 bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700">자동 광산 가동 중</span>
+            </div>
+
+            <!-- 업그레이드 아이템 리스트 -->
+            <div id="shopList" class="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                <!-- 자바스크립트로 자동 생성됩니다 -->
+            </div>
+
+            <!-- 통계 현황 박스 -->
+            <div class="p-4 rounded-2xl bg-slate-900/30 border border-slate-800/60 backdrop-blur-xl text-xs space-y-2 text-slate-400">
+                <div class="flex justify-between">
+                    <span>총 누적 획득 에너지:</span>
+                    <span id="statTotalScore" class="font-semibold text-slate-200">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>총 클릭 횟수:</span>
+                    <span id="statTotalClicks" class="font-semibold text-slate-200">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>현재 인챈트 배율:</span>
+                    <span id="statMultiplier" class="font-semibold text-purple-300">1.0x</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 하단 푸터 -->
+    <footer class="relative z-10 w-full py-3 text-center text-xs text-slate-500 border-t border-slate-900 bg-slate-950/80">
+        Crystal Clicker &copy; 2026 - 클릭으로 무한한 에너지를 채워보세요.
+    </footer>
+
+    <!-- 알림 메세지 팝업 패널 -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 bg-purple-900/90 border border-purple-500 text-white px-4 py-3 rounded-xl shadow-2xl transition-opacity duration-300 opacity-0 pointer-events-none flex items-center space-x-2">
+        <i class="fa-solid fa-circle-check text-purple-300"></i>
+        <span id="toastMsg" class="text-sm font-medium">업그레이드 완료!</span>
+    </div>
+
+    <!-- 게임 시스템 및 로직 자바스크립트 -->
+    <script>
+        // --- 게임 상태 데이터 ---
+        const gameState = {
+            score: 0,
+            totalScore: 0,
+            totalClicks: 0,
+            clickPower: 1,
+            cps: 0, // Click Per Second
+            multiplier: 1.0,
+            soundEnabled: true,
+            comboCount: 0,
+            comboMax: 20,
+            comboTimer: null
+        };
+
+        // --- 업그레이드 목록 정의 ---
+        const upgrades = [
+            {
+                id: 'clicker_1',
+                name: '크리스탈 연마',
+                desc: '클릭당 에너지가 +1 증가합니다.',
+                baseCost: 15,
+                costMultiplier: 1.15,
+                count: 0,
+                type: 'click',
+                power: 1,
+                icon: 'fa-hand-pointer',
+                iconColor: 'text-purple-400'
+            },
+            {
+                id: 'clicker_2',
+                name: '공진 튜닝',
+                desc: '클릭당 에너지가 +5 증가합니다.',
+                baseCost: 100,
+                costMultiplier: 1.2,
+                count: 0,
+                type: 'click',
+                power: 5,
+                icon: 'fa-wand-magic-sparkles',
+                iconColor: 'text-pink-400'
+            },
+            {
+                id: 'auto_1',
+                name: '자동 추출기',
+                desc: '1초당 1개의 에너지를 자동으로 모읍니다.',
+                baseCost: 50,
+                costMultiplier: 1.18,
+                count: 0,
+                type: 'cps',
+                power: 1,
+                icon: 'fa-robot',
+                iconColor: 'text-blue-400'
+            },
+            {
+                id: 'auto_2',
+                name: '플라즈마 드릴',
+                desc: '1초당 8개의 에너지를 모읍니다.',
+                baseCost: 350,
+                costMultiplier: 1.22,
+                count: 0,
+                type: 'cps',
+                power: 8,
+                icon: 'fa-gears',
+                iconColor: 'text-cyan-400'
+            },
+            {
+                id: 'auto_3',
+                name: '마법 공진 발전소',
+                desc: '1초당 45개의 에너지를 모읍니다.',
+                baseCost: 2000,
+                costMultiplier: 1.25,
+                count: 0,
+                type: 'cps',
+                power: 45,
+                icon: 'fa-bolt',
+                iconColor: 'text-amber-400'
+            },
+            {
+                id: 'mult_1',
+                name: '양자 인챈트',
+                desc: '전체 에너지 생산 배율을 +20% 증가시킵니다.',
+                baseCost: 1000,
+                costMultiplier: 2.2,
+                count: 0,
+                type: 'multiplier',
+                power: 0.2,
+                icon: 'fa-atom',
+                iconColor: 'text-emerald-400'
+            }
+        ];
+
+        // --- 사운드 효과 (Web Audio API) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playClickSound(freq = 440, type = 'sine') {
+            if (!gameState.soundEnabled) return;
+            try {
+                initAudio();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.5, audioCtx.currentTime + 0.08);
+
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch (e) {
+                // 오디오 생성 제한 시 무시
+            }
+        }
+
+        function playBuySound() {
+            if (!gameState.soundEnabled) return;
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(500, now + 0.05);
+                osc.frequency.setValueAtTime(800, now + 0.1);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(now + 0.2);
+            } catch (e) {}
+        }
+
+        // --- 엘리먼트 참조 ---
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const clickPowerDisplay = document.getElementById('clickPowerDisplay');
+        const cpsDisplay = document.getElementById('cpsDisplay');
+        const crystalContainer = document.getElementById('crystalContainer');
+        const crystalObject = document.getElementById('crystalObject');
+        const shopList = document.getElementById('shopList');
+        const comboBar = document.getElementById('comboBar');
+        const comboMultiplier = document.getElementById('comboMultiplier');
+        const comboRing = document.getElementById('comboRing');
+        const statTotalScore = document.getElementById('statTotalScore');
+        const statTotalClicks = document.getElementById('statTotalClicks');
+        const statMultiplier = document.getElementById('statMultiplier');
+
+        // --- 숫자 포맷팅 (소수점 정리 및 단위) ---
+        function formatNumber(num) {
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return Math.floor(num).toLocaleString();
+        }
+
+        // --- 크리스탈 클릭 처리 ---
+        function handleCrystalClick(e) {
+            // 통통 튀는 애니메이션
+            crystalObject.classList.remove('crystal-bounce');
+            void crystalObject.offsetWidth; // 리플로우 강제
+            crystalObject.classList.add('crystal-bounce');
+
+            // 콤보 계산 (최대 2배 버프)
+            gameState.comboCount = Math.min(gameState.comboCount + 1, gameState.comboMax);
+            const comboBonus = 1 + (gameState.comboCount / gameState.comboMax); // 1.0 ~ 2.0x
+            
+            // 획득 점수
+            const gainedScore = gameState.clickPower * gameState.multiplier * comboBonus;
+            
+            gameState.score += gainedScore;
+            gameState.totalScore += gainedScore;
+            gameState.totalClicks += 1;
+
+            // 사운드 재색 (콤보가 올라갈 수록 피치 상승)
+            playClickSound(400 + (gameState.comboCount * 25));
+
+            // 시각 효과
+            createFloatingText(e, `+${formatNumber(gainedScore)}`);
+            createParticles(e);
+
+            // 콤보 타이머 리셋 (1.2초 내 재클릭 필요)
+            resetComboTimer();
+
+            // UI 업데이트
+            updateUI();
+        }
+
+        // --- Floating Text (+점수) 효과 ---
+        function createFloatingText(e, text) {
+            const rect = crystalContainer.getBoundingClientRect();
+            let x, y;
+
+            if (e && e.clientX) {
+                x = e.clientX;
+                y = e.clientY;
+            } else {
+                // 터치 또는 이벤트 좌표 미제공 시 중앙
+                x = rect.left + rect.width / 2;
+                y = rect.top + rect.height / 2;
+            }
+
+            const floatEl = document.createElement('div');
+            floatEl.className = 'float-text text-xl md:text-2xl text-purple-300';
+            floatEl.innerText = text;
+
+            // 약간의 랜덤 오프셋
+            const randomX = (Math.random() - 0.5) * 40;
+            floatEl.style.left = `${x + randomX}px`;
+            floatEl.style.top = `${y - 20}px`;
+
+            document.body.appendChild(floatEl);
+
+            setTimeout(() => {
+                floatEl.remove();
+            }, 800);
+        }
+
+        // --- 파티클 터짐 효과 ---
+        function createParticles(e) {
+            const rect = crystalContainer.getBoundingClientRect();
+            const centerX = e.clientX || (rect.left + rect.width / 2);
+            const centerY = e.clientY || (rect.top + rect.height / 2);
+
+            const colors = ['#c084fc', '#a855f7', '#38bdf8', '#f472b6', '#ffffff'];
+
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+
+                const size = Math.random() * 8 + 4;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                // 랜덤 360도 이동 거리와 방향
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 60 + 20;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.backgroundColor = color;
+                particle.style.boxShadow = `0 0 10px ${color}`;
+                particle.style.left = `${centerX}px`;
+                particle.style.top = `${centerY}px`;
+                particle.style.setProperty('--dx', `${dx}px`);
+                particle.style.setProperty('--dy', `${dy}px`);
+
+                document.body.appendChild(particle);
+
+                setTimeout(() => {
+                    particle.remove();
+                }, 600);
+            }
+        }
+
+        // --- 콤보 시스템 ---
+        function resetComboTimer() {
+            clearTimeout(gameState.comboTimer);
+            
+            // 콤보 게이지 UI
+            const ratio = (gameState.comboCount / gameState.comboMax) * 100;
+            comboBar.style.width = `${ratio}%`;
+            
+            const comboBonus = (1 + (gameState.comboCount / gameState.comboMax)).toFixed(1);
+            comboMultiplier.innerText = `${comboBonus}x`;
+
+            if (gameState.comboCount >= gameState.comboMax) {
+                crystalObject.classList.add('combo-active');
+                comboRing.style.borderColor = 'rgba(251, 191, 36, 0.8)';
+            }
+
+            gameState.comboTimer = setTimeout(() => {
+                gameState.comboCount = 0;
+                comboBar.style.width = '0%';
+                comboMultiplier.innerText = '1.0x';
+                crystalObject.classList.remove('combo-active');
+                comboRing.style.borderColor = 'rgba(251, 191, 36, 0)';
+            }, 1200);
+        }
+
+        // --- 업그레이드 아이템 구매 ---
+        function buyUpgrade(index) {
+            const up = upgrades[index];
+            const currentCost = Math.floor(up.baseCost * Math.pow(up.costMultiplier, up.count));
+
+            if (gameState.score >= currentCost) {
+                gameState.score -= currentCost;
+                up.count += 1;
+
+                // 스탯 적용
+                recalculateStats();
+                playBuySound();
+                showToast(`[${up.name}] 업그레이드 완료!`);
+
+                // UI 및 상점 갱신
+                updateUI();
+                renderShop();
+                saveGame();
+            }
+        }
+
+        // --- 수치 재계산 (파워 & CPS) ---
+        function recalculateStats() {
+            let basePower = 1;
+            let baseCps = 0;
+            let multBonus = 1.0;
+
+            upgrades.forEach(up => {
+                if (up.type === 'click') {
+                    basePower += up.power * up.count;
+                } else if (up.type === 'cps') {
+                    baseCps += up.power * up.count;
+                } else if (up.type === 'multiplier') {
+                    multBonus += up.power * up.count;
+                }
+            });
+
+            gameState.clickPower = basePower;
+            gameState.cps = baseCps;
+            gameState.multiplier = multBonus;
+        }
+
+        // --- 상점 목록 리렌더링 ---
+        function renderShop() {
+            shopList.innerHTML = '';
+
+            upgrades.forEach((up, idx) => {
+                const cost = Math.floor(up.baseCost * Math.pow(up.costMultiplier, up.count));
+                const canAfford = gameState.score >= cost;
+
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${
+                    canAfford 
+                        ? 'bg-slate-900/60 border-slate-700/80 hover:border-purple-500/60 hover:bg-slate-800/60 cursor-pointer' 
+                        : 'bg-slate-950/40 border-slate-900 opacity-60'
+                }`;
+
+                card.onclick = () => {
+                    if (canAfford) buyUpgrade(idx);
+                };
+
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3.5">
+                        <div class="w-11 h-11 rounded-xl bg-slate-800/90 border border-slate-700/50 flex items-center justify-center text-lg ${up.iconColor} shrink-0">
+                            <i class="fa-solid ${up.icon}"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h3 class="font-bold text-sm text-slate-100">${up.name}</h3>
+                                ${up.count > 0 ? `<span class="text-xs bg-purple-950 text-purple-300 font-semibold px-2 py-0.5 rounded-full border border-purple-800/50">Lv.${up.count}</span>` : ''}
+                            </div>
+                            <p class="text-xs text-slate-400 mt-0.5">${up.desc}</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-sm font-extrabold ${canAfford ? 'text-purple-300' : 'text-slate-500'} flex items-center justify-end space-x-1">
+                            <span>${formatNumber(cost)}</span>
+                            <span class="text-xs">⚡</span>
+                        </div>
+                        <span class="text-[10px] text-slate-500">구매하기</span>
+                    </div>
+                `;
+
+                shopList.appendChild(card);
+            });
+        }
+
+        // --- UI 전체 업데이트 ---
+        function updateUI() {
+            scoreDisplay.innerText = formatNumber(gameState.score);
+            clickPowerDisplay.innerText = formatNumber(gameState.clickPower * gameState.multiplier);
+            cpsDisplay.innerText = formatNumber(gameState.cps * gameState.multiplier);
+
+            statTotalScore.innerText = formatNumber(gameState.totalScore);
+            statTotalClicks.innerText = formatNumber(gameState.totalClicks);
+            statMultiplier.innerText = `${gameState.multiplier.toFixed(1)}x`;
+
+            // 상점 버튼 가능 여부 주기적 갱신
+            const shopCards = shopList.children;
+            upgrades.forEach((up, idx) => {
+                const cost = Math.floor(up.baseCost * Math.pow(up.costMultiplier, up.count));
+                const canAfford = gameState.score >= cost;
+                if (shopCards[idx]) {
+                    if (canAfford) {
+                        shopCards[idx].classList.remove('opacity-60', 'bg-slate-950/40', 'border-slate-900');
+                        shopCards[idx].classList.add('bg-slate-900/60', 'border-slate-700/80', 'cursor-pointer');
+                    } else {
+                        shopCards[idx].classList.add('opacity-60', 'bg-slate-950/40', 'border-slate-900');
+                        shopCards[idx].classList.remove('bg-slate-900/60', 'border-slate-700/80', 'cursor-pointer');
+                    }
+                }
+            });
+        }
+
+        // --- 토스트 알림 ---
+        let toastTimer = null;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            toastMsg.innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2000);
+        }
+
+        // --- 사운드 토글 ---
+        function toggleSound() {
+            gameState.soundEnabled = !gameState.soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            if (gameState.soundEnabled) {
+                icon.className = 'fa-solid fa-volume-high';
+                showToast('사운드가 켜졌습니다.');
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-slate-500';
+                showToast('사운드가 음소거되었습니다.');
+            }
+        }
+
+        // --- 자동 루프 (CPS 처리: 초당 10회 분할 실행) ---
+        setInterval(() => {
+            if (gameState.cps > 0) {
+                const addAmount = (gameState.cps * gameState.multiplier) / 10;
+                gameState.score += addAmount;
+                gameState.totalScore += addAmount;
+                updateUI();
+            }
+        }, 100);
+
+        // --- 자동 저장 & 로드 ---
+        function saveGame() {
+            const saveData = {
+                gameState: gameState,
+                upgrades: upgrades.map(u => ({ id: u.id, count: u.count }))
+            };
+            localStorage.setItem('crystal_clicker_save', JSON.stringify(saveData));
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('crystal_clicker_save');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    Object.assign(gameState, parsed.gameState);
+                    if (parsed.upgrades) {
+                        parsed.upgrades.forEach(savedUp => {
+                            const target = upgrades.find(u => u.id === savedUp.id);
+                            if (target) target.count = savedUp.count;
+                        });
+                    }
+                    recalculateStats();
+                } catch (e) {
+                    console.error('저장 데이터 로드 실패', e);
+                }
+            }
+        }
+
+        function resetGame() {
+            if (confirm('모든 게임 진행 상황을 초기화하시겠습니까?')) {
+                localStorage.removeItem('crystal_clicker_save');
+                location.reload();
+            }
+        }
+
+        // 30초마다 자동 저장
+        setInterval(saveGame, 30000);
+
+        // --- 이벤트 리스너 등록 ---
+        crystalContainer.addEventListener('pointerdown', (e) => {
+            handleCrystalClick(e);
+        });
+
+        // 초기화 실행
+        window.onload = () => {
+            loadGame();
+            renderShop();
+            updateUI();
+        };
+    </script>
+</body>
+</html>
